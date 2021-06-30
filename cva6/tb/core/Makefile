@@ -40,6 +40,35 @@ else
 endif
 
 ###############################################################################
+# Synopsys VCS specific commands, variables
+###############################################################################
+VCS                     = vcs
+VCS_FLAGS              ?= +define+WT_CACHE +define+RVFI_TRACE # user defined
+ALL_VCS_FLAGS           = -sverilog $(VCS_FLAGS)
+VCS_RESULTS_DIR         = vcs_results
+SIMV                    = ./simv
+
+vcs_comp:
+	@echo "[VCS] Building Model"
+	mkdir -p $(VCS_RESULTS_DIR)
+	cd $(VCS_RESULTS_DIR) && vlogan $(ALL_VCS_FLAGS) \
+	  -f $(FLIST_CORE) -f $(CVA6_TB_DIR)/Flist.cva6_tb
+	cd $(VCS_RESULTS_DIR) && vcs work.cva6_core_only_tb
+
+vcs_run: vcs_comp
+	@echo "[VCS] Running Model"
+	$(SIMV)
+
+vcs_run_gui: vcs_comp
+	@echo "[VCS] Running Model in gui mode"
+	$(SIMV) -gui
+
+vcs_clean:
+	@echo "[VCS] Cleanup (entire vcs_results dir)"
+	rm -rf simv* *.daidir *.vpd *.db csrc ucli.key vc_hdrs.h
+
+
+###############################################################################
 # Cadence Xcelium specific commands, variables
 ###############################################################################
 XRUN                   ?= xrun
@@ -191,19 +220,23 @@ clean_all: xrun_clean_all dsim_clean_all veri_clean_all
 
 help:
 	@echo "Shell environment:"
-	@echo "   CVA6_REPO_DIR  : $(CVA6_REPO_DIR)"
-	@echo "   CVA6_TB_DIR    : $(CVA6_TB_DIR)"
+	@echo "   CVA6_REPO_DIR    : $(CVA6_REPO_DIR)"
+	@echo "   CVA6_TB_DIR      : $(CVA6_TB_DIR)"
 	@echo "Verilator targets:"
-	@echo "   make verilate  : Builds verilator"
-	@echo "   make veri_comp : Builds and compiles verilator"
-	@echo "   make veri_run  : Builds, compiles and runs"
+	@echo "   make verilate    : Builds verilator"
+	@echo "   make veri_comp   : Builds and compiles verilator"
+	@echo "   make veri_run    : Builds, compiles and runs"
 	@echo "DSIM targets:"
-	@echo "   make dsim_comp : Compiles with DSIM"
-	@echo "   make dsim_run  : Compiles and runs with DSIM"
+	@echo "   make dsim_comp   : Compiles with DSIM"
+	@echo "   make dsim_run    : Compiles and runs with DSIM"
 	@echo "XRUN targets:"
-	@echo "   make xrun_comp : Compiles with XRUN"
-	@echo "   make xrun_run  : Compiles and runs with XRUN"
+	@echo "   make xrun_comp   : Compiles with XRUN"
+	@echo "   make xrun_run    : Compiles and runs with XRUN"
+	@echo "VCS targets:"
+	@echo "   make vcs_comp    : Compiles with VCS"
+	@echo "   make vcs_run     : Compiles and runs with VCS"
+	@echo "   make vcs_run_gui : Compiles and runs with VCS"
 	@echo "Clean-up targets:"
-	@echo "   make clean_all : Deletes ALL generated files"
+	@echo "   make clean_all   : Deletes ALL generated files"
 	@echo "Support for other simulators on the ToDo list..."
 
