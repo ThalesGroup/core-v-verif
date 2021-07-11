@@ -1,5 +1,94 @@
+diff --git a/riscv-target/sifive-formal/formalspec-env/aw_test_macros.h b/riscv-target/sifive-formal/formalspec-env/aw_test_macros.h
+index 8fe4fe8..6543341 100644
+--- a/riscv-target/sifive-formal/formalspec-env/aw_test_macros.h
++++ b/riscv-target/sifive-formal/formalspec-env/aw_test_macros.h
+@@ -393,10 +393,17 @@ test_ ## testnum: \
+ # Tests floating-point instructions
+ #-----------------------------------------------------------------------
+ 
++#ifdef __llvm__
++#define qNaNf NaN
++#define sNaNf sNaN
++#define qNaN NaN
++#define sNaN sNaN
++#else // Assume GNU binutils.
+ #define qNaNf 0f:7fc00000
+ #define sNaNf 0f:7f800001
+ #define qNaN 0d:7ff8000000000000
+ #define sNaN 0d:7ff0000000000001
++#endif
+ 
+ #define TEST_FP_OP_S_INTERNAL( testnum, flags, result, val1, val2, val3, code... ) \
+ test_ ## testnum: \
+diff --git a/riscv-target/sifive-formal/formalspec-env/p/riscv_test.h b/riscv-target/sifive-formal/formalspec-env/p/riscv_test.h
+index 318b749..d054716 100644
+--- a/riscv-target/sifive-formal/formalspec-env/p/riscv_test.h
++++ b/riscv-target/sifive-formal/formalspec-env/p/riscv_test.h
+@@ -66,7 +66,7 @@
+ #define INIT_SPTBR                                                      \
+   la t0, 1f;                                                            \
+   csrw mtvec, t0;                                                       \
+-  csrwi sptbr, 0;                                                       \
++  csrwi satp, 0;                                                       \
+   .align 2;                                                             \
+ 1:
+ 
+diff --git a/riscv-test-env/aw_test_macros.h b/riscv-test-env/aw_test_macros.h
+index 6711457..f921ab6 100644
+--- a/riscv-test-env/aw_test_macros.h
++++ b/riscv-test-env/aw_test_macros.h
+@@ -393,10 +393,17 @@ test_ ## testnum: \
+ # Tests floating-point instructions
+ #-----------------------------------------------------------------------
+ 
++#ifdef __llvm__
++#define qNaNf NaN
++#define sNaNf sNaN
++#define qNaN NaN
++#define sNaN sNaN
++#else // Assume GNU binutils.
+ #define qNaNf 0f:7fc00000
+ #define sNaNf 0f:7f800001
+ #define qNaN 0d:7ff8000000000000
+ #define sNaN 0d:7ff0000000000001
++#endif
+ 
+ #define TEST_FP_OP_S_INTERNAL( testnum, flags, result, val1, val2, val3, code... ) \
+ test_ ## testnum: \
+diff --git a/riscv-test-env/p/riscv_test.h b/riscv-test-env/p/riscv_test.h
+index eaa6758..d655d3c 100644
+--- a/riscv-test-env/p/riscv_test.h
++++ b/riscv-test-env/p/riscv_test.h
+@@ -66,7 +66,7 @@
+ #define INIT_SPTBR                                                      \
+   la t0, 1f;                                                            \
+   csrw mtvec, t0;                                                       \
+-  csrwi sptbr, 0;                                                       \
++  csrwi satp, 0;                                                        \
+   .align 2;                                                             \
+ 1:
+ 
+diff --git a/riscv-test-env/v/entry.S b/riscv-test-env/v/entry.S
+index 9719662..a9ae411 100644
+--- a/riscv-test-env/v/entry.S
++++ b/riscv-test-env/v/entry.S
+@@ -111,12 +111,12 @@ trap_entry:
+   csrrw  t0,sscratch,sp
+   STORE  t0,2*REGBYTES(sp)
+ 
+-  # get sr, epc, badvaddr, cause
++  # get sr, epc, tval, cause
+   csrr   t0,sstatus
+   STORE  t0,32*REGBYTES(sp)
+   csrr   t0,sepc
+   STORE  t0,33*REGBYTES(sp)
+-  csrr   t0,sbadaddr
++  csrr   t0,stval
+   STORE  t0,34*REGBYTES(sp)
+   csrr   t0,scause
+   STORE  t0,35*REGBYTES(sp)
 diff --git a/riscv-test-env/v/vm.c b/riscv-test-env/v/vm.c
-index 6ab7fd1..fc01b94 100644
+index 6ab7fd1..e7c434e 100644
 --- a/riscv-test-env/v/vm.c
 +++ b/riscv-test-env/v/vm.c
 @@ -9,8 +9,8 @@
@@ -13,6 +102,15 @@ index 6ab7fd1..fc01b94 100644
  
  static void do_tohost(uint64_t tohost_value)
  {
+@@ -230,7 +230,7 @@ void vm_boot(uintptr_t test_addr)
+   l1pt[PTES_PER_PT-1] = (DRAM_BASE/RISCV_PGSIZE << PTE_PPN_SHIFT) | PTE_V | PTE_R | PTE_W | PTE_X | PTE_A | PTE_D;
+   uintptr_t vm_choice = SPTBR_MODE_SV32;
+ #endif
+-  write_csr(sptbr, ((uintptr_t)l1pt >> PGSHIFT) |
++  write_csr(satp, ((uintptr_t)l1pt >> PGSHIFT) |
+                    (vm_choice * (SPTBR_MODE & ~(SPTBR_MODE<<1))));
+ 
+   // Set up PMPs if present, ignoring illegal instruction trap if not.
 diff --git a/riscv-test-suite/rv32i/src/I-EBREAK-01.S b/riscv-test-suite/rv32i/src/I-EBREAK-01.S
 index 958eebc..b84559f 100644
 --- a/riscv-test-suite/rv32i/src/I-EBREAK-01.S
@@ -38,22 +136,33 @@ index 5278207..d181526 100644
      # increment return address
      csrr    x30, mepc
 diff --git a/riscv-test-suite/rv32i/src/I-MISALIGN_JMP-01.S b/riscv-test-suite/rv32i/src/I-MISALIGN_JMP-01.S
-index 8f54534..a09cf76 100644
+index 8f54534..79461b8 100644
 --- a/riscv-test-suite/rv32i/src/I-MISALIGN_JMP-01.S
 +++ b/riscv-test-suite/rv32i/src/I-MISALIGN_JMP-01.S
-@@ -277,6 +277,7 @@ RV_COMPLIANCE_CODE_BEGIN
+@@ -277,14 +277,15 @@ RV_COMPLIANCE_CODE_BEGIN
  
      # ---------------------------------------------------------------------------------------------
      # Exception handler
 +    .align 2
  _trap_handler:
      # increment return address
-     csrr    x30, mbadaddr
+-    csrr    x30, mbadaddr
++    csrr    x30, mtval
+     addi    x30, x30, -2
+     csrw    mepc, x30
+ 
+-    # store low bits of mbadaddr
+-    csrr    x30, mbadaddr
++    # store low bits of mtval
++    csrr    x30, mtval
+     andi    x30, x30, 3
+     sw      x30, 0(x1)
+ 
 diff --git a/riscv-test-suite/rv32i/src/I-MISALIGN_LDST-01.S b/riscv-test-suite/rv32i/src/I-MISALIGN_LDST-01.S
-index 5a20187..0eeb9d1 100644
+index 5a20187..9d3f668 100644
 --- a/riscv-test-suite/rv32i/src/I-MISALIGN_LDST-01.S
 +++ b/riscv-test-suite/rv32i/src/I-MISALIGN_LDST-01.S
-@@ -188,6 +188,7 @@ RV_COMPLIANCE_CODE_BEGIN
+@@ -188,14 +188,15 @@ RV_COMPLIANCE_CODE_BEGIN
  
      # ---------------------------------------------------------------------------------------------
      # Exception handler
@@ -61,3 +170,341 @@ index 5a20187..0eeb9d1 100644
  _trap_handler:
      # increment return address
      csrr    x30, mepc
+     addi    x30, x30, 4
+     csrw    mepc, x30
+ 
+-    # store low bits of mbadaddr
+-    csrr    x30, mbadaddr
++    # store low bits of mtval
++    csrr    x30, mtval
+     andi    x30, x30, 3
+     sw      x30, 0(x1)
+ 
+diff --git a/riscv-test-suite/rv32i/src/I-RF_x0-01.S b/riscv-test-suite/rv32i/src/I-RF_x0-01.S
+index 8f282d5..36dcef5 100644
+--- a/riscv-test-suite/rv32i/src/I-RF_x0-01.S
++++ b/riscv-test-suite/rv32i/src/I-RF_x0-01.S
+@@ -54,7 +54,8 @@ RV_COMPLIANCE_CODE_BEGIN
+     addi    x0, x0, 1
+     ori     x0, x0, 0x7F0
+     andi    x0, x0, 0x53F
+-    xori    x0, x0, 0xFFFFF803
++    # xori    x0, x0, 0xFFFFF803
++    xori    x0, x0, -0x7FD
+     slli    x0, x0, 5
+     srai    x0, x0, 2
+     srli    x0, x0, 4
+diff --git a/riscv-test-suite/rv32imc/src/C-JAL.S b/riscv-test-suite/rv32imc/src/C-JAL.S
+index 8c47350..c653ed0 100644
+--- a/riscv-test-suite/rv32imc/src/C-JAL.S
++++ b/riscv-test-suite/rv32imc/src/C-JAL.S
+@@ -83,7 +83,7 @@ RV_COMPLIANCE_CODE_BEGIN
+ 	# address for test results
+ 	la	x2, test_5_res
+ 
+-	TEST_CJ(c.jal, x13, 0x8000, x2, 0)
++	TEST_CJ(c.jal, x13, -0x8000, x2, 0)
+ 
+ 	RVTEST_IO_WRITE_STR(x31, "Test End\n")
+ 
+@@ -109,4 +109,4 @@ test_4_res:
+ test_5_res:
+ 	.fill 1, 4, -1
+ 
+-RV_COMPLIANCE_DATA_END
+\ No newline at end of file
++RV_COMPLIANCE_DATA_END
+diff --git a/riscv-test-suite/rv32mi/rv64mi/access.S b/riscv-test-suite/rv32mi/rv64mi/access.S
+index 7c674f9..4b07aae 100644
+--- a/riscv-test-suite/rv32mi/rv64mi/access.S
++++ b/riscv-test-suite/rv32mi/rv64mi/access.S
+@@ -43,7 +43,7 @@ RV_COMPLIANCE_CODE_BEGIN
+   TEST_PASSFAIL
+ 
+   .align 2
+-  .global mtvec_handler
++  .weak mtvec_handler
+ mtvec_handler:
+   li a0, 2
+   beq TESTNUM, a0, 2f
+diff --git a/riscv-test-suite/rv32mi/rv64mi/breakpoint.S b/riscv-test-suite/rv32mi/rv64mi/breakpoint.S
+index 35cc83b..bdeb184 100644
+--- a/riscv-test-suite/rv32mi/rv64mi/breakpoint.S
++++ b/riscv-test-suite/rv32mi/rv64mi/breakpoint.S
+@@ -146,7 +146,7 @@ sign_pass:
+   j pass
+ 
+   .align 2
+-  .global mtvec_handler
++  .weak mtvec_handler
+ mtvec_handler:
+   # Only even-numbered tests should trap.
+   andi t0, TESTNUM, 1
+diff --git a/riscv-test-suite/rv32mi/rv64mi/illegal.S b/riscv-test-suite/rv32mi/rv64mi/illegal.S
+index 4d859a8..c9c6fb6 100644
+--- a/riscv-test-suite/rv32mi/rv64mi/illegal.S
++++ b/riscv-test-suite/rv32mi/rv64mi/illegal.S
+@@ -72,19 +72,19 @@ bad4:
+   wfi
+   j fail
+ 
+-  # Make sure SFENCE.VMA and sptbr don't trap when TVM=0.
++  # Make sure SFENCE.VMA and satp don't trap when TVM=0.
+   sfence.vma
+-  csrr t0, sptbr
++  csrr t0, satp
+ bad5:
+   .word 0
+   j fail
+ 
+ bad6:
+-  # Make sure SFENCE.VMA and sptbr do trap when TVM=1.
++  # Make sure SFENCE.VMA and satp do trap when TVM=1.
+   sfence.vma
+   j fail
+ bad7:
+-  csrr t0, sptbr
++  csrr t0, satp
+   j fail
+ 
+   # Make sure SRET doesn't trap when TSR=0.
+@@ -110,7 +110,7 @@ bad9:
+   TEST_PASSFAIL
+ 
+   .align 8
+-  .global mtvec_handler
++  .weak mtvec_handler
+ mtvec_handler:
+   j synchronous_exception
+   j msip
+@@ -135,8 +135,8 @@ synchronous_exception:
+   bne t0, t1, fail
+   csrr t0, mepc
+ 
+-  # Make sure mbadaddr contains either 0 or the instruction word.
+-  csrr t2, mbadaddr
++  # Make sure mtval contains either 0 or the instruction word.
++  csrr t2, mtval
+   beqz t2, 1f
+   lhu t3, 0(t0)
+   lhu t4, 2(t0)
+diff --git a/riscv-test-suite/rv32mi/rv64mi/ma_addr.S b/riscv-test-suite/rv32mi/rv64mi/ma_addr.S
+index c35f147..cba7b5d 100644
+--- a/riscv-test-suite/rv32mi/rv64mi/ma_addr.S
++++ b/riscv-test-suite/rv32mi/rv64mi/ma_addr.S
+@@ -97,12 +97,12 @@ RV_COMPLIANCE_CODE_BEGIN
+   TEST_PASSFAIL
+ 
+   .align 3
+-  .global mtvec_handler
++  .weak mtvec_handler
+ mtvec_handler:
+   csrr t0, mcause
+   bne t0, s1, fail
+ 
+-  csrr t0, mbadaddr
++  csrr t0, mtval
+   bne t0, t1, fail
+ 
+   lb t0, (t0)
+diff --git a/riscv-test-suite/rv32mi/rv64si/csr.S b/riscv-test-suite/rv32mi/rv64si/csr.S
+index 4ef7664..01e06b8 100644
+--- a/riscv-test-suite/rv32mi/rv64si/csr.S
++++ b/riscv-test-suite/rv32mi/rv64si/csr.S
+@@ -113,7 +113,7 @@ finish:
+   TEST_PASSFAIL
+ 
+   .align 2
+-  .global stvec_handler
++  .weak stvec_handler
+ stvec_handler:
+   # Trapping on tests 10-12 is good news.
+   # Note that since the test didn't complete, TESTNUM is smaller by 1.
+diff --git a/riscv-test-suite/rv32mi/rv64si/dirty.S b/riscv-test-suite/rv32mi/rv64si/dirty.S
+index 26f185f..3c48118 100644
+--- a/riscv-test-suite/rv32mi/rv64si/dirty.S
++++ b/riscv-test-suite/rv32mi/rv64si/dirty.S
+@@ -18,7 +18,7 @@ RV_COMPLIANCE_CODE_BEGIN
+   la a1, page_table_1
+   srl a1, a1, RISCV_PGSHIFT
+   or a1, a1, a0
+-  csrw sptbr, a1
++  csrw satp, a1
+   sfence.vma
+ 
+   # Set up MPRV with MPP=S, so loads and stores use S-mode
+@@ -74,7 +74,7 @@ RV_COMPLIANCE_CODE_BEGIN
+   TEST_PASSFAIL
+ 
+   .align 2
+-  .global mtvec_handler
++  .weak mtvec_handler
+ mtvec_handler:
+   csrr t0, mcause
+   add t0, t0, -CAUSE_STORE_PAGE_FAULT
+diff --git a/riscv-test-suite/rv32mi/rv64si/ma_fetch.S b/riscv-test-suite/rv32mi/rv64si/ma_fetch.S
+index e52ab83..41abd86 100644
+--- a/riscv-test-suite/rv32mi/rv64si/ma_fetch.S
++++ b/riscv-test-suite/rv32mi/rv64si/ma_fetch.S
+@@ -19,7 +19,7 @@ RV_COMPLIANCE_CODE_BEGIN
+   #define sscratch mscratch
+   #define sstatus mstatus
+   #define scause mcause
+-  #define sbadaddr mbadaddr
++  #define stval mtval
+   #define sepc mepc
+   #define sret mret
+   #define stvec_handler mtvec_handler
+@@ -165,7 +165,7 @@ RV_COMPLIANCE_CODE_BEGIN
+   TEST_PASSFAIL
+ 
+   .align 2
+-  .global stvec_handler
++  .weak stvec_handler
+ stvec_handler:
+   # tests 2, 4, 5, 6, and 8 should trap
+   li a0, 2
+@@ -192,8 +192,8 @@ stvec_handler:
+   addi a1, a1, 4
+   bne t0, a1, fail
+ 
+-  # verify that badaddr == 0 or badaddr == t0+2.
+-  csrr a0, sbadaddr
++  # verify that tval == 0 or tval == t0+2.
++  csrr a0, stval
+   beqz a0, 1f
+   addi a0, a0, -2
+   bne a0, t0, fail
+diff --git a/riscv-test-suite/rv32mi/rv64si/sbreak.S b/riscv-test-suite/rv32mi/rv64si/sbreak.S
+index 366cf6e..d6b63d2 100644
+--- a/riscv-test-suite/rv32mi/rv64si/sbreak.S
++++ b/riscv-test-suite/rv32mi/rv64si/sbreak.S
+@@ -35,7 +35,7 @@ do_break:
+   TEST_PASSFAIL
+ 
+   .align 2
+-  .global stvec_handler
++  .weak stvec_handler
+ stvec_handler:
+   li t1, CAUSE_BREAKPOINT
+   csrr t0, scause
+diff --git a/riscv-test-suite/rv32mi/rv64si/scall.S b/riscv-test-suite/rv32mi/rv64si/scall.S
+index 78334f8..c11a239 100644
+--- a/riscv-test-suite/rv32mi/rv64si/scall.S
++++ b/riscv-test-suite/rv32mi/rv64si/scall.S
+@@ -64,7 +64,7 @@ do_scall:
+   TEST_PASSFAIL
+ 
+   .align 2
+-  .global stvec_handler
++  .weak stvec_handler
+ stvec_handler:
+   csrr t0, scause
+   bne t0, t1, fail
+diff --git a/riscv-test-suite/rv32mi/src/shamt.S b/riscv-test-suite/rv32mi/src/shamt.S
+index 76b505f..719b356 100644
+--- a/riscv-test-suite/rv32mi/src/shamt.S
++++ b/riscv-test-suite/rv32mi/src/shamt.S
+@@ -23,7 +23,7 @@ RV_COMPLIANCE_CODE_BEGIN
+ 
+   TEST_PASSFAIL
+ 
+-.global mtvec_handler
++.weak mtvec_handler
+ mtvec_handler:
+   # Trapping on test 3 is good.
+   # Note that since the test didn't complete, TESTNUM is smaller by 1.
+diff --git a/riscv-test-suite/rv32si/rv64si/csr.S b/riscv-test-suite/rv32si/rv64si/csr.S
+index 9899abf..d3a3cc3 100644
+--- a/riscv-test-suite/rv32si/rv64si/csr.S
++++ b/riscv-test-suite/rv32si/rv64si/csr.S
+@@ -114,7 +114,7 @@ finish:
+   TEST_PASSFAIL
+ 
+   .align 2
+-  .global stvec_handler
++  .weak stvec_handler
+ stvec_handler:
+   # Trapping on tests 10-12 is good news.
+   # Note that since the test didn't complete, TESTNUM is smaller by 1.
+diff --git a/riscv-test-suite/rv32si/rv64si/dirty.S b/riscv-test-suite/rv32si/rv64si/dirty.S
+index 1a324a8..78e518c 100644
+--- a/riscv-test-suite/rv32si/rv64si/dirty.S
++++ b/riscv-test-suite/rv32si/rv64si/dirty.S
+@@ -21,7 +21,7 @@ RV_COMPLIANCE_CODE_BEGIN
+   la a1, page_table_1
+   srl a1, a1, RISCV_PGSHIFT
+   or a1, a1, a0
+-  csrw sptbr, a1
++  csrw satp, a1
+   sfence.vma
+ 
+   # Set up MPRV with MPP=S, so loads and stores use S-mode
+@@ -77,7 +77,7 @@ RV_COMPLIANCE_CODE_BEGIN
+   TEST_PASSFAIL
+ 
+   .align 2
+-  .global mtvec_handler
++  .weak mtvec_handler
+ mtvec_handler:
+   csrr t0, mcause
+   add t0, t0, -CAUSE_STORE_PAGE_FAULT
+diff --git a/riscv-test-suite/rv32si/rv64si/ma_fetch.S b/riscv-test-suite/rv32si/rv64si/ma_fetch.S
+index e52ab83..41abd86 100644
+--- a/riscv-test-suite/rv32si/rv64si/ma_fetch.S
++++ b/riscv-test-suite/rv32si/rv64si/ma_fetch.S
+@@ -19,7 +19,7 @@ RV_COMPLIANCE_CODE_BEGIN
+   #define sscratch mscratch
+   #define sstatus mstatus
+   #define scause mcause
+-  #define sbadaddr mbadaddr
++  #define stval mtval
+   #define sepc mepc
+   #define sret mret
+   #define stvec_handler mtvec_handler
+@@ -165,7 +165,7 @@ RV_COMPLIANCE_CODE_BEGIN
+   TEST_PASSFAIL
+ 
+   .align 2
+-  .global stvec_handler
++  .weak stvec_handler
+ stvec_handler:
+   # tests 2, 4, 5, 6, and 8 should trap
+   li a0, 2
+@@ -192,8 +192,8 @@ stvec_handler:
+   addi a1, a1, 4
+   bne t0, a1, fail
+ 
+-  # verify that badaddr == 0 or badaddr == t0+2.
+-  csrr a0, sbadaddr
++  # verify that tval == 0 or tval == t0+2.
++  csrr a0, stval
+   beqz a0, 1f
+   addi a0, a0, -2
+   bne a0, t0, fail
+diff --git a/riscv-test-suite/rv32si/rv64si/sbreak.S b/riscv-test-suite/rv32si/rv64si/sbreak.S
+index 366cf6e..d6b63d2 100644
+--- a/riscv-test-suite/rv32si/rv64si/sbreak.S
++++ b/riscv-test-suite/rv32si/rv64si/sbreak.S
+@@ -35,7 +35,7 @@ do_break:
+   TEST_PASSFAIL
+ 
+   .align 2
+-  .global stvec_handler
++  .weak stvec_handler
+ stvec_handler:
+   li t1, CAUSE_BREAKPOINT
+   csrr t0, scause
+diff --git a/riscv-test-suite/rv32si/rv64si/scall.S b/riscv-test-suite/rv32si/rv64si/scall.S
+index 01c298c..1855767 100644
+--- a/riscv-test-suite/rv32si/rv64si/scall.S
++++ b/riscv-test-suite/rv32si/rv64si/scall.S
+@@ -62,7 +62,7 @@ do_scall:
+   TEST_PASSFAIL
+ 
+   .align 2
+-  .global stvec_handler
++  .weak stvec_handler
+ stvec_handler:
+   csrr t0, scause
+   bne t0, t1, fail
