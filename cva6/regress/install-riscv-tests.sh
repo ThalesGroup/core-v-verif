@@ -11,10 +11,12 @@ if ! [ -n "$TESTS_REPO" ]; then
   TESTS_REPO="https://github.com/riscv/riscv-tests.git"
   TESTS_BRANCH="master"
   TESTS_HASH="f92842f91644092960ac7946a61ec2895e543cec"
+  TESTS_PATCH="../../../cva6/regress/riscv-tests.patch"
 fi
 echo $TESTS_REPO
 echo $TESTS_BRANCH
 echo $TESTS_HASH
+echo $TESTS_PATCH
 
 mkdir -p cva6/tests
 if ! [ -d cva6/tests/riscv-tests ]; then
@@ -22,6 +24,6 @@ if ! [ -d cva6/tests/riscv-tests ]; then
   cd cva6/tests/riscv-tests; git checkout $TESTS_HASH; 
   git submodule update --init --recursive
   git apply --directory=env ../../../cva6/regress/riscv-tests-env.patch
-  git apply ../../../cva6/regress/riscv-tests.patch
+  git apply $TESTS_PATCH
   cd -
 fi
