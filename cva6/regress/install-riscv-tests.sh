@@ -22,5 +22,6 @@ if ! [ -d cva6/tests/riscv-tests ]; then
   cd cva6/tests/riscv-tests; git checkout $TESTS_HASH; 
   git submodule update --init --recursive
   git apply --directory=env ../../../cva6/regress/riscv-tests-env.patch
+  git apply ../../../cva6/regress/riscv-tests.patch
   cd -
 fi

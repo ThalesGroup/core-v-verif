@@ -23,11 +23,26 @@ if ! [ -n "$DV_SIMULATORS" ]; then
   DV_SIMULATORS=veri-uvm,spike
 fi
 
+# If no compiler was specified, assume GCC for now.
+if ! [  -n "$RISCV_GCC" ]; then
+  RISCV_GCC=$RISCV/bin/riscv-none-elf-gcc
+fi
+
+# If using CLang with no user-specified DV_OPTS, set the default option values.
+COMPILER=`basename $RISCV_GCC`
+if [ "${COMPILER:0:5}" = "clang" -a -z "$DV_OPTS" ]; then
+  # CLang requires separate options for 64 and 32 bits.
+  DV_OPTS_64=--gcc_opts="--target=riscv64 -mno-relax --sysroot=${RISCV}/riscv-none-elf -Wl,-melf64lriscv -fuse-ld=${RISCV}/bin/riscv-none-elf-ld"
+  DV_OPTS_32=--gcc_opts="--target=riscv32 -mno-relax --sysroot=${RISCV}/riscv-none-elf -Wl,-melf32lriscv -fuse-ld=${RISCV}/bin/riscv-none-elf-ld"
+else
+  echo "*** clang check FAILED!"
+fi
+
 cd cva6/sim/riscv-dv
-python3 run.py --testlist=../../tests/testlist_riscv-tests-rv64gc-v.yaml --test rv64ui-v-add --target rv64gc --iss=$DV_SIMULATORS $DV_OPTS
-python3 run.py --testlist=../../tests/testlist_riscv-tests-rv64gc-p.yaml --test rv64ui-p-add --target rv64gc --iss=$DV_SIMULATORS $DV_OPTS
-python3 run.py --testlist=../../tests/testlist_riscv-compliance-rv64gc.yaml --test rv32i-I-ADD-01 --target rv64gc --iss=$DV_SIMULATORS $DV_OPTS
+python3 run.py --testlist=../../tests/testlist_riscv-tests-rv64gc-v.yaml --test rv64ui-v-add --target rv64gc --iss=$DV_SIMULATORS ${DV_OPTS_64:+"$DV_OPTS_64"}
+python3 run.py --testlist=../../tests/testlist_riscv-tests-rv64gc-p.yaml --test rv64ui-p-add --target rv64gc --iss=$DV_SIMULATORS ${DV_OPTS_64:+"$DV_OPTS_64"}
+python3 run.py --testlist=../../tests/testlist_riscv-compliance-rv64gc.yaml --test rv32i-I-ADD-01 --target rv64gc --iss=$DV_SIMULATORS ${DV_OPTS_64:+"$DV_OPTS_64"}
 make -C ../../../core-v-cores/cva6 clean
-python3 run.py --testlist=../../tests/testlist_riscv-compliance-rv32ima.yaml --test rv32i-I-ADD-01 --target rv32imac --iss=$DV_SIMULATORS $DV_OPTS
-python3 run.py --testlist=../../tests/testlist_riscv-tests-rv32ima-p.yaml --test rv32ui-p-add --target rv32imac --iss=$DV_SIMULATORS $DV_OPTS
+python3 run.py --testlist=../../tests/testlist_riscv-compliance-rv32ima.yaml --test rv32i-I-ADD-01 --target rv32imac --iss=$DV_SIMULATORS ${DV_OPTS_32:+"$DV_OPTS_32"}
+python3 run.py --testlist=../../tests/testlist_riscv-tests-rv32ima-p.yaml --test rv32ui-p-add --target rv32imac --iss=$DV_SIMULATORS ${DV_OPTS_32:+"$DV_OPTS_32"}
 cd ../../..

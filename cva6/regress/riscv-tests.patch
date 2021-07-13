@@ -1,0 +1,226 @@
+diff --git a/benchmarks/pmp/pmp.c b/benchmarks/pmp/pmp.c
+index 2ccd769..f401b1f 100644
+--- a/benchmarks/pmp/pmp.c
++++ b/benchmarks/pmp/pmp.c
+@@ -42,7 +42,7 @@ static void init_pt()
+ #else
+   uintptr_t vm_choice = SATP_MODE_SV32;
+ #endif
+-  write_csr(sptbr, ((uintptr_t)l1pt >> RISCV_PGSHIFT) |
++  write_csr(satp, ((uintptr_t)l1pt >> RISCV_PGSHIFT) |
+                    (vm_choice * (SATP_MODE & ~(SATP_MODE<<1))));
+   write_csr(pmpaddr2, -1);
+   write_csr(pmpcfg0, (PMP_NAPOT | PMP_R) << 16);
+diff --git a/env b/env
+--- a/env
++++ b/env
+@@ -1 +1 @@
+-Subproject commit 2f75dc2940f1f780b1f2d12f41daec9c92fc445a
++Subproject commit 2f75dc2940f1f780b1f2d12f41daec9c92fc445a-dirty
+diff --git a/isa/macros/scalar/test_macros.h b/isa/macros/scalar/test_macros.h
+index ed4cab0..2cc643a 100644
+--- a/isa/macros/scalar/test_macros.h
++++ b/isa/macros/scalar/test_macros.h
+@@ -374,10 +374,17 @@ test_ ## testnum: \
+ # Tests floating-point instructions
+ #-----------------------------------------------------------------------
+ 
++#ifdef __llvm__
++#define qNaNf NaN
++#define sNaNf sNaN
++#define qNaN NaN
++#define sNaN sNaN
++#else // Assume GNU binutils.
+ #define qNaNf 0f:7fc00000
+ #define sNaNf 0f:7f800001
+ #define qNaN 0d:7ff8000000000000
+ #define sNaN 0d:7ff0000000000001
++#endif
+ 
+ #define TEST_FP_OP_S_INTERNAL( testnum, flags, result, val1, val2, val3, code... ) \
+ test_ ## testnum: \
+diff --git a/isa/rv32mi/shamt.S b/isa/rv32mi/shamt.S
+index 622fde4..74ed709 100644
+--- a/isa/rv32mi/shamt.S
++++ b/isa/rv32mi/shamt.S
+@@ -21,7 +21,7 @@ RVTEST_CODE_BEGIN
+ 
+   TEST_PASSFAIL
+ 
+-.global mtvec_handler
++.weak mtvec_handler
+ mtvec_handler:
+   # Trapping on test 3 is good.
+   # Note that since the test didn't complete, TESTNUM is smaller by 1.
+diff --git a/isa/rv64mi/access.S b/isa/rv64mi/access.S
+index 40a28d3..a6c3d88 100644
+--- a/isa/rv64mi/access.S
++++ b/isa/rv64mi/access.S
+@@ -43,7 +43,7 @@ RVTEST_CODE_BEGIN
+   TEST_PASSFAIL
+ 
+   .align 2
+-  .global mtvec_handler
++  .weak mtvec_handler
+ mtvec_handler:
+   li a0, 2
+   beq TESTNUM, a0, 2f
+diff --git a/isa/rv64mi/breakpoint.S b/isa/rv64mi/breakpoint.S
+index 252a696..f3218ef 100644
+--- a/isa/rv64mi/breakpoint.S
++++ b/isa/rv64mi/breakpoint.S
+@@ -101,7 +101,7 @@ RVTEST_CODE_BEGIN
+   TEST_PASSFAIL
+ 
+   .align 2
+-  .global mtvec_handler
++  .weak mtvec_handler
+ mtvec_handler:
+   # Only even-numbered tests should trap.
+   andi t0, TESTNUM, 1
+diff --git a/isa/rv64mi/illegal.S b/isa/rv64mi/illegal.S
+index 5531570..1704011 100644
+--- a/isa/rv64mi/illegal.S
++++ b/isa/rv64mi/illegal.S
+@@ -68,19 +68,19 @@ bad4:
+   wfi
+   j fail
+ 
+-  # Make sure SFENCE.VMA and sptbr don't trap when TVM=0.
++  # Make sure SFENCE.VMA and satp don't trap when TVM=0.
+   sfence.vma
+-  csrr t0, sptbr
++  csrr t0, satp
+ bad5:
+   .word 0
+   j fail
+ 
+ bad6:
+-  # Make sure SFENCE.VMA and sptbr do trap when TVM=1.
++  # Make sure SFENCE.VMA and satp do trap when TVM=1.
+   sfence.vma
+   j fail
+ bad7:
+-  csrr t0, sptbr
++  csrr t0, satp
+   j fail
+ 
+   # Make sure SRET doesn't trap when TSR=0.
+@@ -106,7 +106,7 @@ bad9:
+   TEST_PASSFAIL
+ 
+   .align 8
+-  .global mtvec_handler
++  .weak mtvec_handler
+ mtvec_handler:
+   j synchronous_exception
+   j msip
+diff --git a/isa/rv64mi/ma_addr.S b/isa/rv64mi/ma_addr.S
+index 721ac6a..a6e4aba 100644
+--- a/isa/rv64mi/ma_addr.S
++++ b/isa/rv64mi/ma_addr.S
+@@ -93,7 +93,7 @@ RVTEST_CODE_BEGIN
+   TEST_PASSFAIL
+ 
+   .align 3
+-  .global mtvec_handler
++  .weak mtvec_handler
+ mtvec_handler:
+   csrr t0, mcause
+   bne t0, s1, fail
+diff --git a/isa/rv64si/csr.S b/isa/rv64si/csr.S
+index 09494ef..20793c9 100644
+--- a/isa/rv64si/csr.S
++++ b/isa/rv64si/csr.S
+@@ -117,7 +117,7 @@ finish:
+   TEST_PASSFAIL
+ 
+   .align 2
+-  .global stvec_handler
++  .weak stvec_handler
+ stvec_handler:
+   # Trapping on tests 13-15 is good news.
+   # Note that since the test didn't complete, TESTNUM is smaller by 1.
+diff --git a/isa/rv64si/dirty.S b/isa/rv64si/dirty.S
+index 15f3163..402ef89 100644
+--- a/isa/rv64si/dirty.S
++++ b/isa/rv64si/dirty.S
+@@ -22,7 +22,7 @@ RVTEST_CODE_BEGIN
+   la a1, page_table_1
+   srl a1, a1, RISCV_PGSHIFT
+   or a1, a1, a0
+-  csrw sptbr, a1
++  csrw satp, a1
+   sfence.vma
+ 
+   # Set up MPRV with MPP=S, so loads and stores use S-mode
+@@ -78,7 +78,7 @@ RVTEST_CODE_BEGIN
+   TEST_PASSFAIL
+ 
+   .align 2
+-  .global mtvec_handler
++  .weak mtvec_handler
+ mtvec_handler:
+   csrr t0, mcause
+   add t0, t0, -CAUSE_STORE_PAGE_FAULT
+diff --git a/isa/rv64si/icache-alias.S b/isa/rv64si/icache-alias.S
+index dbc934e..667802c 100644
+--- a/isa/rv64si/icache-alias.S
++++ b/isa/rv64si/icache-alias.S
+@@ -48,7 +48,7 @@ RVTEST_CODE_BEGIN
+   la a1, page_table_1
+   srl a1, a1, RISCV_PGSHIFT
+   or a1, a1, a0
+-  csrw sptbr, a1
++  csrw satp, a1
+   sfence.vma
+ 
+   # Enter supervisor mode and make sure correct page is accessed
+@@ -108,7 +108,7 @@ RVTEST_CODE_BEGIN
+   TEST_PASSFAIL
+ 
+   .align 2
+-  .global mtvec_handler
++  .weak mtvec_handler
+ mtvec_handler:
+   csrr t0, mcause
+   add t0, t0, -CAUSE_STORE_PAGE_FAULT
+diff --git a/isa/rv64si/ma_fetch.S b/isa/rv64si/ma_fetch.S
+index 7d2adec..dfefd07 100644
+--- a/isa/rv64si/ma_fetch.S
++++ b/isa/rv64si/ma_fetch.S
+@@ -156,7 +156,7 @@ RVTEST_CODE_BEGIN
+   TEST_PASSFAIL
+ 
+   .align 2
+-  .global stvec_handler
++  .weak stvec_handler
+ stvec_handler:
+   # tests 2, 4, 5, 6, and 8 should trap
+   li a0, 2
+diff --git a/isa/rv64si/sbreak.S b/isa/rv64si/sbreak.S
+index 31efff8..19def37 100644
+--- a/isa/rv64si/sbreak.S
++++ b/isa/rv64si/sbreak.S
+@@ -31,7 +31,7 @@ do_break:
+   TEST_PASSFAIL
+ 
+   .align 2
+-  .global stvec_handler
++  .weak stvec_handler
+ stvec_handler:
+   li t1, CAUSE_BREAKPOINT
+   csrr t0, scause
+diff --git a/isa/rv64si/scall.S b/isa/rv64si/scall.S
+index 9956e03..9acd699 100644
+--- a/isa/rv64si/scall.S
++++ b/isa/rv64si/scall.S
+@@ -64,7 +64,7 @@ do_scall:
+ # Either way, we'll get the coverage we desire: such a handler must check
+ # both mcause and TESTNUM, just like the following handler.
+   .align 2
+-  .global stvec_handler
++  .weak stvec_handler
+ stvec_handler:
+   csrr t0, scause
+   bne t0, t1, fail
